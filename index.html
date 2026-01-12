@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>طلبات - متجر إلكتروني للزبائن</title>
+    <title>Abo Zahra - متجر إلكتروني للزبائن</title>
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -1020,7 +1020,7 @@
                     <div class="logo-icon">
                         <i class="fas fa-shopping-bag"></i>
                     </div>
-                    <div class="logo-text">طلبات</div>
+                    <div class="logo-text">Abo Zahra</div>
                 </a>
                 
                 <ul class="nav-links">
@@ -1212,7 +1212,7 @@
                         <ul>
                             <li><i class="fas fa-mobile-alt"></i> <strong>رقم المحفظة:</strong> 01029149379</li>
                             <li id="amountDetail"><i class="fas fa-money-bill-wave"></i> <strong>المبلغ:</strong> 150 جنيه</li>
-                            <li><i class="fas fa-info-circle"></i> <strong>الغرض:</strong> <span id="paymentPurpose">مصاريف شحن طلبات</span></li>
+                            <li><i class="fas fa-info-circle"></i> <strong>الغرض:</strong> <span id="paymentPurpose">مصاريف شحن Abo Zahra</span></li>
                         </ul>
                     </div>
                     
@@ -1289,7 +1289,7 @@
         <div class="container">
             <div class="footer-content">
                 <div class="footer-section">
-                    <h3>عن طلبات</h3>
+                    <h3>عن Abo Zahra</h3>
                     <p style="color: var(--gray); line-height: 1.8;">نقدم لكم أفضل تجربة تسوق إلكتروني مع مجموعة متنوعة من المنتجات وخدمة توصيل سريعة وآمنة.</p>
                 </div>
                 
@@ -1313,7 +1313,7 @@
             </div>
             
             <div class="footer-bottom">
-                <p>© 2023 طلبات. جميع الحقوق محفوظة. | الطلبات تُحفظ في Firebase Firestore</p>
+                <p>© 2023 Abo Zahra. جميع الحقوق محفوظة. | الAbo Zahra تُحفظ في Firebase Firestore</p>
             </div>
         </div>
     </footer>
@@ -1526,7 +1526,7 @@
                         id: doc.id, 
                         name: data.name || data.text || 'منتج بدون اسم',
                         price: parseFloat(data.price) || 0,
-                        description: data.description || 'منتج مميز من متجر طلبات',
+                        description: data.description || 'منتج مميز من متجر Abo Zahra',
                         image: imageUrl,
                         category: data.category || 'other',
                         createdAt: data.createdAt || new Date(),
@@ -1795,7 +1795,7 @@
             showNotification('تم الحذف', `تم حذف ${item.name} من السلة`);
         }
 
-        // ==================== دوال الدفع والطلبات ====================
+        // ==================== دوال الدفع والAbo Zahra ====================
 
         // Calculate cart totals
         function calculateCartTotals() {
@@ -1819,7 +1819,7 @@
                     <p style="color: var(--secondary); font-weight: 600; margin-top: 0.5rem;">ملاحظة: ستدفع قيمة المنتجات عند الاستلام</p>
                 `;
                 elements.amountDetail.innerHTML = `<i class="fas fa-money-bill-wave"></i> <strong>المبلغ:</strong> 150 جنيه`;
-                elements.paymentPurpose.textContent = 'مصاريف شحن طلبات';
+                elements.paymentPurpose.textContent = 'مصاريف شحن Abo Zahra';
                 elements.uploadInstructions.textContent = 'بعد إتمام التحويل، قم برفع صورة إثبات الدفع (سكرين شوت) للمتابعة:';
             } else {
                 // الاستلام من المتجر: دفع المبلغ الكامل
