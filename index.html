@@ -1062,6 +1062,44 @@
                 padding: 1rem;
             }
         }
+        
+        /* عرض المنتجات في صفحة التأكيد */
+        .order-products-list {
+            margin: 1rem 0;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid var(--gray-light);
+            border-radius: var(--radius);
+            padding: 1rem;
+        }
+        
+        .order-product-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--gray-light);
+        }
+        
+        .order-product-item:last-child {
+            border-bottom: none;
+        }
+        
+        .order-product-name {
+            flex: 1;
+            font-weight: 500;
+        }
+        
+        .order-product-quantity {
+            margin: 0 1rem;
+            color: var(--primary);
+            font-weight: 600;
+        }
+        
+        .order-product-total {
+            font-weight: 600;
+            color: var(--dark);
+        }
     </style>
 </head>
 <body>
@@ -1387,8 +1425,8 @@
                 <div class="footer-section">
                     <h3>معلومات التواصل</h3>
                     <ul class="footer-links">
-                        <li><a href="tel:01282235324"><i class="fas fa-mobile-alt"></i> 01282235324</a></li>
-                        <li><a href="https://wa.me/201282235324" target="_blank"><i class="fab fa-whatsapp"></i> واتساب المتجر</a></li>
+                        <li><a href="tel:01029149379"><i class="fas fa-mobile-alt"></i> 01029149379</a></li>
+                        <li><a href="https://wa.me/201029149379" target="_blank"><i class="fab fa-whatsapp"></i> واتساب المتجر</a></li>
                         <li><a href="#"><i class="fas fa-map-marker-alt"></i> القاهرة، مصر</a></li>
                     </ul>
                 </div>
@@ -1423,7 +1461,7 @@
         const IMGBB_API_KEY = "9bd15b9b262c7a1c8e836dd8d921ef60";
 
         // WhatsApp Configuration
-        const WHATSAPP_PHONE = "201282235324"; // رقم واتساب المتجر (مع رمز الدولة)
+        const WHATSAPP_PHONE = "201029149379"; // رقم واتساب المتجر (مع رمز الدولة)
 
         // ==================== دوال مساعدة جديدة ====================
 
@@ -1541,6 +1579,7 @@
         const appState = {
             products: [],
             cart: JSON.parse(localStorage.getItem('cart')) || [],
+            tempCartForReview: [], // نسخة احتياطية للعرض في صفحة التأكيد
             currentStep: 0,
             deliveryMethod: null, // 'shipping' or 'pickup'
             customerInfo: {},
@@ -1548,7 +1587,9 @@
             paymentProofData: null,
             orderNumber: generateOrderNumber(),
             currentOrderData: null, // لتخزين بيانات الطلب الحالية
-            shippingFee: 150.00
+            shippingFee: 150.00,
+            MAX_QUANTITY_PER_PRODUCT: 100, // الحد الأقصى للكمية لكل منتج
+            orderAutoSaved: false // هل تم حفظ الطلب تلقائياً؟
         };
 
         // DOM Elements
@@ -1781,6 +1822,12 @@
             
             const cartItem = appState.cart.find(item => item.id === productId);
             
+            // التحقق من الحد الأقصى للكمية
+            if (cartItem && cartItem.quantity >= appState.MAX_QUANTITY_PER_PRODUCT) {
+                showNotification('تنبيه', `لا يمكن إضافة أكثر من ${appState.MAX_QUANTITY_PER_PRODUCT} قطعة من نفس المنتج`);
+                return;
+            }
+            
             if (cartItem) {
                 cartItem.quantity += 1;
             } else {
@@ -1922,6 +1969,12 @@
                 return;
             }
             
+            // التحقق من الحد الأقصى للكمية عند الزيادة
+            if (change > 0 && item.quantity >= appState.MAX_QUANTITY_PER_PRODUCT) {
+                showNotification('تنبيه', `لا يمكن شراء أكثر من ${appState.MAX_QUANTITY_PER_PRODUCT} قطعة من نفس المنتج`);
+                return;
+            }
+            
             item.quantity += change;
             
             if (item.quantity <= 0) {
@@ -1939,11 +1992,11 @@
             showNotification('تم الحذف', `تم حذف ${item.name} من السلة`);
         }
 
-        // ==================== دوال الدفع والAbo Zahra ====================
+        // ==================== دوال الدفع والطلب ====================
 
         // Calculate cart totals
-        function calculateCartTotals() {
-            const subtotal = appState.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        function calculateCartTotals(cart = appState.cart) {
+            const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             const shipping = appState.deliveryMethod === 'shipping' ? appState.shippingFee : 0;
             const total = subtotal + shipping;
             
@@ -1978,14 +2031,17 @@
             }
         }
 
-        // Process order
-        async function processOrder() {
+        // Process order تلقائياً بعد رفع الصورة - الإصلاح هنا
+        async function processOrderAutomatically() {
             if (appState.cart.length === 0) {
                 showNotification('خطأ', 'سلة التسوق فارغة');
                 return false;
             }
             
             try {
+                // حفظ نسخة من السلة للعرض لاحقاً
+                appState.tempCartForReview = JSON.parse(JSON.stringify(appState.cart));
+                
                 // Calculate totals
                 const totals = calculateCartTotals();
                 const subtotal = totals.subtotal;
@@ -2030,22 +2086,108 @@
                     deliveryMethod: appState.deliveryMethod,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    whatsappSent: false
+                    whatsappSent: false,
+                    autoSaved: true, // إضافة علامة للحفظ التلقائي
+                    savedAt: new Date().toISOString()
                 };
                 
-                console.log('جاري حفظ الطلب في Firebase...', orderData);
+                console.log('جاري حفظ الطلب تلقائياً في Firebase...', orderData);
                 
                 // Save order to Firebase
                 const ordersRef = db.collection('orders');
                 const docRef = await ordersRef.add(orderData);
                 
-                console.log('تم حفظ الطلب بنجاح! معرف الوثيقة:', docRef.id);
+                console.log('تم حفظ الطلب تلقائياً بنجاح! معرف الوثيقة:', docRef.id);
                 
                 // حفظ بيانات الطلب الحالية
                 appState.currentOrderData = { ...orderData, id: docRef.id };
                 
-                // Clear cart
+                // توليد رقم طلب جديد للطلب التالي
+                appState.orderNumber = generateOrderNumber();
+                
+                return true;
+                
+            } catch (error) {
+                console.error('خطأ في معالجة الطلب تلقائياً:', error);
+                showNotification('خطأ', 'حدث خطأ أثناء حفظ الطلب تلقائياً. سيتم حفظه يدوياً في الخطوة التالية.');
+                return false;
+            }
+        }
+
+        // Process order يدوياً - الإصلاح هنا
+        async function processOrderManually() {
+            if (appState.tempCartForReview.length === 0 && appState.cart.length === 0) {
+                showNotification('خطأ', 'سلة التسوق فارغة');
+                return false;
+            }
+            
+            try {
+                // استخدام السلة المخزنة أو السلة الحالية
+                const cartToProcess = appState.tempCartForReview.length > 0 ? appState.tempCartForReview : appState.cart;
+                
+                // Calculate totals
+                const totals = calculateCartTotals(cartToProcess);
+                const subtotal = totals.subtotal;
+                const shipping = totals.shipping;
+                const total = totals.total;
+                
+                // إعداد بيانات الطلب
+                const orderData = {
+                    orderNumber: appState.orderNumber,
+                    customer: {
+                        name: appState.customerInfo.name,
+                        phone: appState.customerInfo.phone,
+                        address: appState.customerInfo.address || 'الاستلام من المتجر'
+                    },
+                    items: cartToProcess.map(item => ({
+                        productId: item.id,
+                        name: item.name,
+                        price: item.price,
+                        quantity: item.quantity,
+                        image: item.image || ''
+                    })),
+                    delivery: {
+                        method: appState.deliveryMethod,
+                        shippingFee: shipping,
+                        requiresAddress: appState.deliveryMethod === 'shipping'
+                    },
+                    payment: {
+                        method: 'bank_transfer',
+                        amount: appState.deliveryMethod === 'shipping' ? shipping : total,
+                        subtotal: subtotal,
+                        total: total,
+                        proofUrl: appState.paymentProofData ? appState.paymentProofData.url : '',
+                        proofData: appState.paymentProofData,
+                        status: 'pending'
+                    },
+                    summary: {
+                        subtotal: subtotal,
+                        shipping: shipping,
+                        total: total
+                    },
+                    status: 'pending',
+                    deliveryMethod: appState.deliveryMethod,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    whatsappSent: false,
+                    autoSaved: false, // إضافة علامة للحفظ اليدوي
+                    savedAt: new Date().toISOString()
+                };
+                
+                console.log('جاري حفظ الطلب يدوياً في Firebase...', orderData);
+                
+                // Save order to Firebase
+                const ordersRef = db.collection('orders');
+                const docRef = await ordersRef.add(orderData);
+                
+                console.log('تم حفظ الطلب يدوياً بنجاح! معرف الوثيقة:', docRef.id);
+                
+                // حفظ بيانات الطلب الحالية
+                appState.currentOrderData = { ...orderData, id: docRef.id };
+                
+                // مسح السلة بعد الحفظ الناجح
                 appState.cart = [];
+                appState.tempCartForReview = [];
                 updateCart();
                 
                 // توليد رقم طلب جديد للطلب التالي
@@ -2054,7 +2196,7 @@
                 return true;
                 
             } catch (error) {
-                console.error('خطأ في معالجة الطلب:', error);
+                console.error('خطأ في معالجة الطلب يدوياً:', error);
                 showNotification('خطأ', 'حدث خطأ أثناء حفظ الطلب. الرجاء المحاولة مرة أخرى.');
                 return false;
             }
@@ -2074,15 +2216,45 @@
             } else if (step === 3) {
                 updateOrderReview();
                 elements.whatsappButtons.style.display = 'none';
+                
+                // إذا كان الطلب محفوظاً تلقائياً، نعرض رسالة خاصة
+                if (appState.orderAutoSaved && appState.currentOrderData) {
+                    elements.orderReview.innerHTML += `
+                        <div style="background: rgba(16, 185, 129, 0.1); padding: 1rem; border-radius: 8px; margin-top: 1rem; border: 1px solid var(--secondary);">
+                            <p style="color: var(--secondary); font-weight: 600; margin: 0;">
+                                <i class="fas fa-check-circle"></i> تم حفظ الطلب تلقائياً في قاعدة البيانات
+                            </p>
+                        </div>
+                    `;
+                    elements.confirmOrder.style.display = 'none';
+                    elements.prevStep2.style.display = 'none';
+                    elements.whatsappButtons.style.display = 'block';
+                }
             }
         }
 
-        // Update order review
+        // Update order review - الإصلاح النهائي هنا
         function updateOrderReview() {
-            const totals = calculateCartTotals();
+            // استخدام السلة المخزنة أو السلة الحالية
+            const cartToDisplay = appState.tempCartForReview.length > 0 ? appState.tempCartForReview : appState.cart;
+            
+            if (cartToDisplay.length === 0) {
+                elements.orderReview.innerHTML = `
+                    <div style="text-align: center; padding: 2rem; color: var(--gray);">
+                        <i class="fas fa-exclamation-triangle" style="font-size: 2rem; margin-bottom: 1rem;"></i>
+                        <p>لا توجد منتجات في السلة</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            const totals = calculateCartTotals(cartToDisplay);
             const subtotal = totals.subtotal;
             const shipping = totals.shipping;
             const total = totals.total;
+            
+            // حساب إجمالي القطع
+            const totalItems = cartToDisplay.reduce((sum, item) => sum + item.quantity, 0);
             
             let deliveryInfo = '';
             if (appState.deliveryMethod === 'shipping') {
@@ -2104,12 +2276,31 @@
                 paymentInfo = `<p><strong>المبلغ المطلوب دفعه:</strong> ${subtotal.toFixed(2)} جنيه (المبلغ الكامل)</p>`;
             }
             
+            // عرض قائمة المنتجات
+            let productsList = '';
+            if (cartToDisplay.length > 0) {
+                productsList = '<div class="order-products-list">';
+                cartToDisplay.forEach(item => {
+                    const itemTotal = item.price * item.quantity;
+                    productsList += `
+                        <div class="order-product-item">
+                            <div class="order-product-name">${item.name}</div>
+                            <div class="order-product-quantity">${item.quantity} × ${item.price.toFixed(2)} جنيه</div>
+                            <div class="order-product-total">${itemTotal.toFixed(2)} جنيه</div>
+                        </div>
+                    `;
+                });
+                productsList += '</div>';
+            }
+            
             elements.orderReview.innerHTML = `
                 <p><strong>الاسم:</strong> ${appState.customerInfo.name}</p>
                 <p><strong>الهاتف:</strong> ${appState.customerInfo.phone}</p>
                 ${deliveryInfo}
                 <hr style="margin: 1rem 0; border-color: var(--gray-light);">
-                <p><strong>عدد المنتجات:</strong> ${appState.cart.length}</p>
+                <p><strong>إجمالي القطع:</strong> ${totalItems} قطعة</p>
+                <p><strong>عدد المنتجات:</strong> ${cartToDisplay.length} منتج مختلف</p>
+                ${productsList}
                 <p><strong>المجموع الفرعي:</strong> ${subtotal.toFixed(2)} جنيه</p>
                 <p><strong>مصاريف الشحن:</strong> ${shipping.toFixed(2)} جنيه</p>
                 <p><strong>الإجمالي:</strong> ${total.toFixed(2)} جنيه</p>
@@ -2169,9 +2360,12 @@
                 }
             });
             
-            // Checkout Button
+            // Checkout Button - الإصلاح هنا
             elements.checkoutBtn.addEventListener('click', () => {
-                if (appState.cart.length === 0) return;
+                if (appState.cart.length === 0) {
+                    showNotification('تنبيه', 'سلة التسوق فارغة');
+                    return;
+                }
                 
                 elements.cartModal.classList.remove('active');
                 elements.paymentModal.classList.add('active');
@@ -2192,8 +2386,12 @@
                 elements.addressField.style.display = 'block';
                 document.getElementById('customerAddress').required = true;
                 
+                // تنظيف السلة المخزنة
+                appState.tempCartForReview = [];
+                
                 // توليد رقم طلب جديد
                 appState.orderNumber = generateOrderNumber();
+                appState.orderAutoSaved = false; // إعادة تعيين علامة الحفظ التلقائي
             });
             
             // Customer Info Form
@@ -2225,6 +2423,9 @@
                     return;
                 }
                 
+                // حفظ نسخة من السلة قبل الذهاب للخطوة التالية
+                appState.tempCartForReview = JSON.parse(JSON.stringify(appState.cart));
+                
                 // Go to next step
                 goToStep(2);
             });
@@ -2234,7 +2435,7 @@
                 goToStep(0);
             });
             
-            // File Upload for payment proof
+            // File Upload for payment proof - الإصلاح هنا
             elements.uploadArea.addEventListener('click', () => {
                 elements.paymentProof.click();
             });
@@ -2268,14 +2469,26 @@
                 // رفع الصورة إلى IMGBB
                 try {
                     elements.nextStep.disabled = true;
-                    elements.nextStep.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري رفع الصورة...';
+                    elements.nextStep.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري رفع الصورة وحفظ الطلب تلقائياً...';
                     
+                    // رفع الصورة أولاً
                     appState.paymentProofData = await uploadImageToImgBB(file);
+                    
+                    // حفظ الطلب تلقائياً بعد رفع الصورة (بدون مسح السلة)
+                    const success = await processOrderAutomatically();
+                    
+                    if (success) {
+                        appState.orderAutoSaved = true;
+                        showNotification('نجاح', 'تم رفع صورة إثبات الدفع وحفظ الطلب تلقائياً بنجاح');
+                        
+                        // لا نمسح السلة هنا، بل نتركها للعرض
+                        // السلة ستمسح فقط عند حفظ يدوي أو إرسال إلى واتساب
+                    } else {
+                        showNotification('تنبيه', 'تم رفع الصورة بنجاح، سيتم حفظ الطلب يدوياً في الخطوة التالية');
+                    }
                     
                     elements.nextStep.disabled = false;
                     elements.nextStep.innerHTML = 'التالي <i class="fas fa-arrow-left"></i>';
-                    
-                    showNotification('نجاح', 'تم رفع صورة إثبات الدفع بنجاح');
                     
                 } catch (error) {
                     console.error('خطأ في رفع الصورة:', error);
@@ -2304,7 +2517,7 @@
                 goToStep(2);
             });
             
-            // Confirm Order Button
+            // Confirm Order Button (للحفظ اليدوي)
             elements.confirmOrder.addEventListener('click', async () => {
                 if (!confirm('هل أنت متأكد من حفظ الطلب؟')) {
                     return;
@@ -2314,7 +2527,7 @@
                 elements.confirmOrder.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري حفظ الطلب...';
                 
                 try {
-                    const success = await processOrder();
+                    const success = await processOrderManually();
                     
                     if (success) {
                         // إخفاء زر الحفظ وإظهار أزرار واتساب
@@ -2361,6 +2574,11 @@
                     
                     showNotification('نجاح', 'جارٍ فتح واتساب لإرسال الطلب...');
                     
+                    // مسح السلة بعد إرسال الطلب بنجاح
+                    appState.cart = [];
+                    appState.tempCartForReview = [];
+                    updateCart();
+                    
                     // إغلاق نافذة الدفع بعد 2 ثانية
                     setTimeout(() => {
                         elements.paymentModal.classList.remove('active');
@@ -2383,8 +2601,17 @@
                 elements.paymentModal.classList.remove('active');
                 document.body.style.overflow = '';
                 
+                // مسح السلة
+                appState.cart = [];
+                appState.tempCartForReview = [];
+                updateCart();
+                
                 // إظهار نافذة النجاح
-                elements.successMessage.textContent = 'شكراً لك على ثقتك بنا. تم حفظ طلبك في قاعدة البيانات. يمكنك إرساله إلى واتساب لاحقاً.';
+                if (appState.orderAutoSaved) {
+                    elements.successMessage.textContent = 'شكراً لك على ثقتك بنا. تم حفظ طلبك تلقائياً في قاعدة البيانات. يمكنك إرساله إلى واتساب لاحقاً.';
+                } else {
+                    elements.successMessage.textContent = 'شكراً لك على ثقتك بنا. تم حفظ طلبك في قاعدة البيانات. يمكنك إرساله إلى واتساب لاحقاً.';
+                }
                 elements.orderNumber.textContent = `رقم الطلب: ${appState.currentOrderData.orderNumber}`;
                 elements.orderSuccessModal.classList.add('active');
             });
@@ -2435,6 +2662,8 @@
                 elements.confirmOrder.style.display = 'flex';
                 elements.prevStep2.style.display = 'flex';
                 elements.whatsappButtons.style.display = 'none';
+                appState.orderAutoSaved = false;
+                appState.tempCartForReview = [];
             });
             
             // Close modals when clicking outside
