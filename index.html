@@ -1457,61 +1457,10 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
 
-        // ImgBB API Key
-        const IMGBB_API_KEY = "9bd15b9b262c7a1c8e836dd8d921ef60";
-
         // WhatsApp Configuration
         const WHATSAPP_PHONE = "201029149379"; // رقم واتساب المتجر (مع رمز الدولة)
 
         // ==================== دوال مساعدة جديدة ====================
-
-        // دالة لتحويل الصورة إلى base64
-        function readFileAsDataURL(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result);
-                reader.onerror = reject;
-                reader.readAsDataURL(file);
-            });
-        }
-
-        // دالة لرفع الصورة إلى IMGBB
-        async function uploadImageToImgBB(file) {
-            try {
-                console.log("🚀 بدء رفع الصورة إلى IMGBB...");
-                
-                const base64Image = await readFileAsDataURL(file);
-                const base64Data = base64Image.split(',')[1];
-                
-                const formData = new FormData();
-                formData.append('key', IMGBB_API_KEY);
-                formData.append('image', base64Data);
-                formData.append('name', file.name || 'payment_proof_' + Date.now());
-                
-                const response = await fetch('https://api.imgbb.com/1/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    console.log("✅ تم رفع الصورة بنجاح:", data.data.url);
-                    return {
-                        success: true,
-                        url: data.data.url,
-                        thumbUrl: data.data.thumb?.url || data.data.url,
-                        deleteUrl: data.data.delete_url
-                    };
-                } else {
-                    throw new Error(data.error?.message || 'فشل في رفع الصورة');
-                }
-                
-            } catch (error) {
-                console.error("❌ خطأ في رفع الصورة إلى IMGBB:", error);
-                throw error;
-            }
-        }
 
         // دالة لتوليد رقم طلب فريد
         function generateOrderNumber() {
@@ -1545,10 +1494,12 @@
             message += `*معلومات الدفع:*\n`;
             if (deliveryMethod === 'shipping') {
                 message += `💳 المبلغ المدفوع: ${payment.amount.toFixed(2)} جنيه (مصاريف الشحن)\n`;
-                message += `📸 تم رفع صورة إثبات الدفع\n`;
+                if (payment.proofUrl) {
+                    message += `📸 إثبات الدفع: ${payment.proofUrl}\n`;
+                }
             } else {
                 message += `💳 المبلغ المدفوع: ${payment.amount.toFixed(2)} جنيه (المبلغ الكامل)\n`;
-                message += `📸 تم رفع صورة إثبات الدفع\n`;
+                message += `📝 ملاحظة: بدون رفع إثبات دفع (الاستلام من المتجر)\n`;
             }
             
             message += `\n---\n`;
@@ -2018,43 +1969,53 @@
                 elements.amountDetail.innerHTML = `<i class="fas fa-money-bill-wave"></i> <strong>المبلغ:</strong> 150 جنيه`;
                 elements.paymentPurpose.textContent = 'مصاريف شحن Abo Zahra';
                 elements.uploadInstructions.textContent = 'بعد إتمام التحويل، قم برفع صورة إثبات الدفع (سكرين شوت) للمتابعة:';
+                
+                // إظهار قسم رفع الصورة للشحن
+                elements.uploadArea.style.display = 'block';
+                elements.nextStep.disabled = true;
+                elements.nextStep.textContent = 'التالي';
             } else {
-                // الاستلام من المتجر: دفع المبلغ الكامل
-                elements.paymentTitle.textContent = 'دفع المبلغ الكامل';
+                // الاستلام من المتجر: دفع المبلغ الكامل - بدون رفع صورة
+                elements.paymentTitle.textContent = 'الاستلام من المتجر';
                 elements.paymentAmountInfo.innerHTML = `
                     <p>لإكمال عملية الشراء، يرجى تحويل مبلغ <strong>${subtotal.toFixed(2)} جنيه</strong> (المبلغ الكامل للطلب) إلى الرقم التالي:</p>
-                    <p style="color: var(--secondary); font-weight: 600;">ملاحظة: بدون مصاريف شحن عند الاستلام من المتجر</p>
+                    <p style="color: var(--secondary); font-weight: 600; margin-top: 0.5rem;">ملاحظة: بدون مصاريف شحن عند الاستلام من المتجر</p>
+                    <p style="color: var(--accent); font-weight: 600; margin-top: 1rem;">
+                        <i class="fas fa-info-circle"></i> عند اختيار الاستلام من المتجر، لا تحتاج لرفع صورة إثبات الدفع
+                    </p>
                 `;
                 elements.amountDetail.innerHTML = `<i class="fas fa-money-bill-wave"></i> <strong>المبلغ:</strong> ${subtotal.toFixed(2)} جنيه`;
                 elements.paymentPurpose.textContent = `دفع طلب كامل رقم ${appState.orderNumber}`;
-                elements.uploadInstructions.textContent = 'بعد إتمام التحويل، قم برفع صورة إثبات الدفع (سكرين شوت) للمتابعة:';
+                elements.uploadInstructions.textContent = 'ملاحظة: عند اختيار الاستلام من المتجر، يمكنك المتابعة مباشرة إلى تأكيد الطلب';
+                
+                // إخفاء قسم رفع الصورة للاستلام من المتجر
+                elements.uploadArea.style.display = 'none';
+                elements.nextStep.disabled = false;
+                elements.nextStep.textContent = 'متابعة إلى تأكيد الطلب';
             }
         }
 
-        // Process order تلقائياً بعد رفع الصورة - الإصلاح هنا
-        async function processOrderAutomatically() {
+        // حفظ الطلب تلقائياً بعد إدخال المعلومات الشخصية للاستلام من المتجر
+        async function savePickupOrderAutomatically() {
             if (appState.cart.length === 0) {
                 showNotification('خطأ', 'سلة التسوق فارغة');
                 return false;
             }
             
             try {
-                // حفظ نسخة من السلة للعرض لاحقاً
-                appState.tempCartForReview = JSON.parse(JSON.stringify(appState.cart));
-                
                 // Calculate totals
                 const totals = calculateCartTotals();
                 const subtotal = totals.subtotal;
                 const shipping = totals.shipping;
                 const total = totals.total;
                 
-                // إعداد بيانات الطلب
+                // إعداد بيانات الطلب للاستلام من المتجر
                 const orderData = {
                     orderNumber: appState.orderNumber,
                     customer: {
                         name: appState.customerInfo.name,
                         phone: appState.customerInfo.phone,
-                        address: appState.customerInfo.address || 'الاستلام من المتجر'
+                        address: 'الاستلام من المتجر'
                     },
                     items: appState.cart.map(item => ({
                         productId: item.id,
@@ -2064,57 +2025,55 @@
                         image: item.image || ''
                     })),
                     delivery: {
-                        method: appState.deliveryMethod,
-                        shippingFee: shipping,
-                        requiresAddress: appState.deliveryMethod === 'shipping'
+                        method: 'pickup',
+                        shippingFee: 0,
+                        requiresAddress: false
                     },
                     payment: {
                         method: 'bank_transfer',
-                        amount: appState.deliveryMethod === 'shipping' ? shipping : total,
+                        amount: total,
                         subtotal: subtotal,
                         total: total,
-                        proofUrl: appState.paymentProofData ? appState.paymentProofData.url : '',
-                        proofData: appState.paymentProofData,
-                        status: 'pending'
+                        proofUrl: '',
+                        status: 'pending',
+                        notes: 'الاستلام من المتجر - بدون رفع إثبات دفع'
                     },
                     summary: {
                         subtotal: subtotal,
-                        shipping: shipping,
+                        shipping: 0,
                         total: total
                     },
                     status: 'pending',
-                    deliveryMethod: appState.deliveryMethod,
+                    deliveryMethod: 'pickup',
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                     whatsappSent: false,
-                    autoSaved: true, // إضافة علامة للحفظ التلقائي
-                    savedAt: new Date().toISOString()
+                    autoSaved: true,
+                    savedAt: new Date().toISOString(),
+                    pickupNotes: 'يتم الاتصال بالعميل لتحديد موعد الاستلام'
                 };
                 
-                console.log('جاري حفظ الطلب تلقائياً في Firebase...', orderData);
+                console.log('جاري حفظ طلب الاستلام من المتجر في Firebase...', orderData);
                 
                 // Save order to Firebase
                 const ordersRef = db.collection('orders');
                 const docRef = await ordersRef.add(orderData);
                 
-                console.log('تم حفظ الطلب تلقائياً بنجاح! معرف الوثيقة:', docRef.id);
+                console.log('تم حفظ طلب الاستلام من المتجر بنجاح! معرف الوثيقة:', docRef.id);
                 
                 // حفظ بيانات الطلب الحالية
                 appState.currentOrderData = { ...orderData, id: docRef.id };
                 
-                // توليد رقم طلب جديد للطلب التالي
-                appState.orderNumber = generateOrderNumber();
-                
                 return true;
                 
             } catch (error) {
-                console.error('خطأ في معالجة الطلب تلقائياً:', error);
-                showNotification('خطأ', 'حدث خطأ أثناء حفظ الطلب تلقائياً. سيتم حفظه يدوياً في الخطوة التالية.');
+                console.error('خطأ في حفظ طلب الاستلام من المتجر:', error);
+                showNotification('خطأ', 'حدث خطأ أثناء حفظ الطلب. الرجاء المحاولة مرة أخرى.');
                 return false;
             }
         }
 
-        // Process order يدوياً - الإصلاح هنا
+        // Process order يدوياً
         async function processOrderManually() {
             if (appState.tempCartForReview.length === 0 && appState.cart.length === 0) {
                 showNotification('خطأ', 'سلة التسوق فارغة');
@@ -2170,7 +2129,7 @@
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                     whatsappSent: false,
-                    autoSaved: false, // إضافة علامة للحفظ اليدوي
+                    autoSaved: false,
                     savedAt: new Date().toISOString()
                 };
                 
@@ -2189,9 +2148,6 @@
                 appState.cart = [];
                 appState.tempCartForReview = [];
                 updateCart();
-                
-                // توليد رقم طلب جديد للطلب التالي
-                appState.orderNumber = generateOrderNumber();
                 
                 return true;
                 
@@ -2233,7 +2189,7 @@
             }
         }
 
-        // Update order review - الإصلاح النهائي هنا
+        // Update order review
         function updateOrderReview() {
             // استخدام السلة المخزنة أو السلة الحالية
             const cartToDisplay = appState.tempCartForReview.length > 0 ? appState.tempCartForReview : appState.cart;
@@ -2271,9 +2227,15 @@
             
             let paymentInfo = '';
             if (appState.deliveryMethod === 'shipping') {
-                paymentInfo = `<p><strong>المبلغ المطلوب دفعه:</strong> 150 جنيه (مصاريف الشحن فقط)</p>`;
+                paymentInfo = `
+                    <p><strong>المبلغ المطلوب دفعه:</strong> 150 جنيه (مصاريف الشحن فقط)</p>
+                    <p><strong>حالة رفع إثبات الدفع:</strong> ${appState.paymentProofData ? 'تم رفع الصورة' : 'لم يتم رفع الصورة'}</p>
+                `;
             } else {
-                paymentInfo = `<p><strong>المبلغ المطلوب دفعه:</strong> ${subtotal.toFixed(2)} جنيه (المبلغ الكامل)</p>`;
+                paymentInfo = `
+                    <p><strong>المبلغ المطلوب دفعه:</strong> ${subtotal.toFixed(2)} جنيه (المبلغ الكامل)</p>
+                    <p><strong>ملاحظة:</strong> عند الاستلام من المتجر، لا تحتاج لرفع إثبات دفع</p>
+                `;
             }
             
             // عرض قائمة المنتجات
@@ -2360,7 +2322,7 @@
                 }
             });
             
-            // Checkout Button - الإصلاح هنا
+            // Checkout Button
             elements.checkoutBtn.addEventListener('click', () => {
                 if (appState.cart.length === 0) {
                     showNotification('تنبيه', 'سلة التسوق فارغة');
@@ -2391,10 +2353,10 @@
                 
                 // توليد رقم طلب جديد
                 appState.orderNumber = generateOrderNumber();
-                appState.orderAutoSaved = false; // إعادة تعيين علامة الحفظ التلقائي
+                appState.orderAutoSaved = false;
             });
             
-            // Customer Info Form
+            // Customer Info Form - التعديل الرئيسي هنا
             elements.customerInfoForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 
@@ -2426,6 +2388,19 @@
                 // حفظ نسخة من السلة قبل الذهاب للخطوة التالية
                 appState.tempCartForReview = JSON.parse(JSON.stringify(appState.cart));
                 
+                // إذا كان الاستلام من المتجر، نحفظ الطلب تلقائياً
+                if (appState.deliveryMethod === 'pickup') {
+                    try {
+                        const success = await savePickupOrderAutomatically();
+                        if (success) {
+                            appState.orderAutoSaved = true;
+                            showNotification('نجاح', 'تم حفظ طلب الاستلام من المتجر تلقائياً');
+                        }
+                    } catch (error) {
+                        console.error('خطأ في حفظ طلب الاستلام من المتجر:', error);
+                    }
+                }
+                
                 // Go to next step
                 goToStep(2);
             });
@@ -2435,12 +2410,17 @@
                 goToStep(0);
             });
             
-            // File Upload for payment proof - الإصلاح هنا
+            // File Upload for payment proof (فقط للشحن)
             elements.uploadArea.addEventListener('click', () => {
-                elements.paymentProof.click();
+                if (appState.deliveryMethod === 'shipping') {
+                    elements.paymentProof.click();
+                }
             });
             
             elements.paymentProof.addEventListener('change', async (e) => {
+                // فقط إذا كان طريقة التوصيل هي الشحن
+                if (appState.deliveryMethod !== 'shipping') return;
+                
                 const file = e.target.files[0];
                 if (!file) return;
                 
@@ -2466,43 +2446,28 @@
                 };
                 reader.readAsDataURL(file);
                 
-                // رفع الصورة إلى IMGBB
-                try {
-                    elements.nextStep.disabled = true;
-                    elements.nextStep.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري رفع الصورة وحفظ الطلب تلقائياً...';
-                    
-                    // رفع الصورة أولاً
-                    appState.paymentProofData = await uploadImageToImgBB(file);
-                    
-                    // حفظ الطلب تلقائياً بعد رفع الصورة (بدون مسح السلة)
-                    const success = await processOrderAutomatically();
-                    
-                    if (success) {
-                        appState.orderAutoSaved = true;
-                        showNotification('نجاح', 'تم رفع صورة إثبات الدفع وحفظ الطلب تلقائياً بنجاح');
-                        
-                        // لا نمسح السلة هنا، بل نتركها للعرض
-                        // السلة ستمسح فقط عند حفظ يدوي أو إرسال إلى واتساب
-                    } else {
-                        showNotification('تنبيه', 'تم رفع الصورة بنجاح، سيتم حفظ الطلب يدوياً في الخطوة التالية');
-                    }
-                    
-                    elements.nextStep.disabled = false;
-                    elements.nextStep.innerHTML = 'التالي <i class="fas fa-arrow-left"></i>';
-                    
-                } catch (error) {
-                    console.error('خطأ في رفع الصورة:', error);
-                    showNotification('خطأ', 'حدث خطأ أثناء رفع الصورة. الرجاء المحاولة مرة أخرى.');
-                    elements.nextStep.disabled = true;
-                    elements.nextStep.innerHTML = 'التالي <i class="fas fa-arrow-left"></i>';
-                }
+                // تمكين زر المتابعة
+                elements.nextStep.disabled = false;
             });
             
-            // Next Step Button
-            elements.nextStep.addEventListener('click', () => {
-                if (!appState.paymentProofData) {
+            // Next Step Button - التعديل الرئيسي هنا
+            elements.nextStep.addEventListener('click', async () => {
+                // إذا كان الشحن، يجب رفع صورة إثبات الدفع
+                if (appState.deliveryMethod === 'shipping' && !appState.paymentProof) {
                     showNotification('تحذير', 'الرجاء رفع صورة إثبات الدفع');
                     return;
+                }
+                
+                // إذا كان الاستلام من المتجر، ننتقل مباشرة إلى تأكيد الطلب
+                if (appState.deliveryMethod === 'pickup') {
+                    // إذا لم يكن الطلب محفوظاً تلقائياً، نحفظه الآن
+                    if (!appState.orderAutoSaved) {
+                        const success = await savePickupOrderAutomatically();
+                        if (!success) {
+                            showNotification('خطأ', 'حدث خطأ أثناء حفظ الطلب');
+                            return;
+                        }
+                    }
                 }
                 
                 goToStep(3);
@@ -2517,8 +2482,13 @@
                 goToStep(2);
             });
             
-            // Confirm Order Button (للحفظ اليدوي)
+            // Confirm Order Button (للحفظ اليدوي - خاص بالشحن)
             elements.confirmOrder.addEventListener('click', async () => {
+                if (appState.deliveryMethod === 'shipping' && !appState.paymentProof) {
+                    showNotification('تحذير', 'الرجاء رفع صورة إثبات الدفع أولاً');
+                    return;
+                }
+                
                 if (!confirm('هل أنت متأكد من حفظ الطلب؟')) {
                     return;
                 }
